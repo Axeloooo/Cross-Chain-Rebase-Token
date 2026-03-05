@@ -17,7 +17,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
 
     uint256 private constant PRECISION_FACTOR = 1e18;
     bytes32 private constant MINT_AND_BURN_ROLE = keccak256("MINT_AND_BURN_ROLE");
-    uint256 private s_interestRate = 5e10;
+    uint256 private s_interestRate = 5 * PRECISION_FACTOR / 1e8;
     mapping(address => uint256) private s_userInterestRates;
     mapping(address => uint256) private s_userLastUpdatedTimestamp;
 
@@ -34,7 +34,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
      * @param _newInterestrate The new interest rate to set
      */
     function setInterestRate(uint256 _newInterestrate) external onlyOwner {
-        if (_newInterestrate < s_interestRate) {
+        if (_newInterestrate >= s_interestRate) {
             revert RebaseToken__InterestRateCanOnlyDecrease(s_interestRate, _newInterestrate);
         }
         s_interestRate = _newInterestrate;
@@ -80,7 +80,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
      * @return The balance for the user including any interest accumulated since the last update
      */
     function balanceOf(address _user) public view override returns (uint256) {
-        return super.balanceOf(_user) + _calculateUserAccumulatedInterestSinceLastUpdate(_user) / PRECISION_FACTOR;
+        return (super.balanceOf(_user) * _calculateUserAccumulatedInterestSinceLastUpdate(_user)) / PRECISION_FACTOR;
     }
 
     /**
