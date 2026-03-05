@@ -75,7 +75,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     }
 
     /**
-     * @notice Calculate the balance for the user including any interest accumulated since the last update (principle balance) + some interest that has accrued
+     * @notice Calculate the balance for the user including any interest accumulated since the last update (principal balance) + some interest that has accrued
      * @param _user The user to calculate the balance for
      * @return The balance for the user including any interest accumulated since the last update
      */
@@ -136,9 +136,9 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
      * @param _user The user to mint accrued interest to
      */
     function _mintAccruedInterest(address _user) internal {
-        uint256 previousPrincipleBalance = super.balanceOf(_user);
+        uint256 previousPrincipalBalance = super.balanceOf(_user);
         uint256 currentBalance = balanceOf(_user);
-        uint256 balanceIncrease = currentBalance - previousPrincipleBalance;
+        uint256 balanceIncrease = currentBalance - previousPrincipalBalance;
         s_userLastUpdatedTimestamp[_user] = block.timestamp;
         _mint(_user, balanceIncrease);
     }
