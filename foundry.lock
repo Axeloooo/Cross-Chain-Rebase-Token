@@ -1,4 +1,13 @@
 {
+  "lib/chainlink-ccip": {
+    "rev": "0e21a8f9dc27904508af7782aa67b5c7cbf2c264"
+  },
+  "lib/chainlink-evm": {
+    "tag": {
+      "name": "v0.3.3",
+      "rev": "793106cd598da8b2762958880300787b0b361fa1"
+    }
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.15.0",
