@@ -145,11 +145,11 @@ contract RebaseTokenTest is Test {
         assertEq(rebaseToken.principleBalanceOf(user), amount);
     }
 
-    function testGetRebaseTokenAdress() public view {
+    function testGetRebaseTokenAddress() public view {
         assertEq(vault.getRebaseTokenAddress(), address(rebaseToken));
     }
 
-    function testInterestRatecanOnlyDecrease(uint256 newInterestRate) public {
+    function testInterestRateCanOnlyDecrease(uint256 newInterestRate) public {
         uint256 initialInterestRate = rebaseToken.getInterestRate();
         newInterestRate = bound(newInterestRate, initialInterestRate, type(uint256).max);
         vm.prank(owner);
