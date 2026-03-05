@@ -35,17 +35,14 @@ contract RebaseTokenTest is Test {
         vault.deposit{value: amount}();
 
         uint256 startBalance = rebaseToken.balanceOf(user);
-        console.log("Start balance:", startBalance);
         assertEq(startBalance, amount);
         vm.warp(block.timestamp + 1 hours);
 
         uint256 middleBalance = rebaseToken.balanceOf(user);
-        console.log("Middle balance:", middleBalance);
         assertGt(middleBalance, startBalance);
         vm.warp(block.timestamp + 1 hours);
 
         uint256 endBalance = rebaseToken.balanceOf(user);
-        console.log("End balance:", endBalance);
         assertGt(endBalance, middleBalance);
 
         assertApproxEqAbs(endBalance - middleBalance, middleBalance - startBalance, 1);
