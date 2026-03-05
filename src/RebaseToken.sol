@@ -42,11 +42,11 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     }
 
     /**
-     * @notice Get the principle balance for a user (the balance without any interest accumulated since the last update)
-     * @param _user The user to get the principle balance for
-     * @return The principle balance for the user
+     * @notice Get the principal balance for a user (the balance without any interest accumulated since the last update)
+     * @param _user The user to get the principal balance for
+     * @return The principal balance for the user
      */
-    function principleBalanceOf(address _user) external view returns (uint256) {
+    function principalBalanceOf(address _user) external view returns (uint256) {
         return super.balanceOf(_user);
     }
 
