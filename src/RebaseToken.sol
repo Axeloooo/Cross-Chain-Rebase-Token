@@ -35,6 +35,15 @@ contract RebaseToken is ERC20 {
     }
 
     /**
+     * @notice Get the principle balance for a user (the balance without any interest accumulated since the last update)
+     * @param _user The user to get the principle balance for
+     * @return The principle balance for the user
+     */
+    function principleBalanceOf(address _user) external view returns (uint256) {
+        return super.balanceOf(_user);
+    }
+
+    /**
      * @notice Mint the user tokens when they deposit into the vault
      * @param _to The address to mint tokens to
      * @param _amount The amount of tokens to mint
@@ -68,6 +77,43 @@ contract RebaseToken is ERC20 {
     }
 
     /**
+     * @notice Transfer tokens from the sender to the recipient and mint any interest accumulated for both the sender and recipient since the last update
+     * @param _recipient The address to transfer tokens to
+     * @param _amount The amount of tokens to transfer
+     * @return A boolean value indicating whether the operation succeeded
+     */
+    function transfer(address _recipient, uint256 _amount) public override returns (bool) {
+        _mintAccruedInterest(msg.sender);
+        _mintAccruedInterest(_recipient);
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(msg.sender);
+        }
+        if (balanceOf(_recipient) == 0) {
+            s_userInterestRates[_recipient] = s_userInterestRates[msg.sender];
+        }
+        return super.transfer(_recipient, _amount);
+    }
+
+    /**
+     * @notice Transfer tokens from the sender to the recipient and mint any interest accumulated for both the sender and recipient since the last update
+     * @param _sender The address to transfer tokens from
+     * @param _recipient The address to transfer tokens to
+     * @param _amount The amount of tokens to transfer
+     * @return A boolean value indicating whether the operation succeeded
+     */
+    function transferFrom(address _sender, address _recipient, uint256 _amount) public override returns (bool) {
+        _mintAccruedInterest(_sender);
+        _mintAccruedInterest(_recipient);
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(_sender);
+        }
+        if (balanceOf(_recipient) == 0) {
+            s_userInterestRates[_recipient] = s_userInterestRates[_sender];
+        }
+        return super.transferFrom(_sender, _recipient, _amount);
+    }
+
+    /**
      * @notice Calculate the interest accumulated for a user since the last update
      * @param _user The user to calculate the interest accumulated for
      * @return The interest accumulated for the user since the last update
@@ -88,6 +134,14 @@ contract RebaseToken is ERC20 {
         uint256 balanceIncrease = currentBalance - previousPrincipleBalance;
         s_userLastUpdatedTimestamp[_user] = block.timestamp;
         _mint(_user, balanceIncrease);
+    }
+
+    /**
+     * @notice Get the global interest rate for the smart contract
+     * @return The global interest rate for the smart contract
+     */
+    function getInterestRate() external view returns (uint256) {
+        return s_interestRate;
     }
 
     /**
