@@ -21,14 +21,28 @@ contract TokenAndPoolDeployer is Script {
         RebaseTokenPool rebaseTokenPool = new RebaseTokenPool(
             IERC20(address(rebaseToken)), new address[](0), networkDetails.rmnProxyAddress, networkDetails.routerAddress
         );
-        rebaseToken.grantMintAndBurnRole(address(rebaseTokenPool));
-        RegistryModuleOwnerCustom(networkDetails.registryModuleOwnerCustomAddress)
-            .registerAdminViaOwner(address(rebaseToken));
-        TokenAdminRegistry(networkDetails.tokenAdminRegistryAddress).acceptAdminRole(address(rebaseToken));
-        TokenAdminRegistry(networkDetails.tokenAdminRegistryAddress)
-            .setPool(address(rebaseToken), address(rebaseTokenPool));
         vm.stopBroadcast();
         return (rebaseToken, rebaseTokenPool);
+    }
+}
+
+contract SetPermissions is Script {
+    function grantRole(address _rebaseToken, address _rebaseTokenPool) public {
+        vm.startBroadcast();
+        IRebaseToken(_rebaseToken).grantMintAndBurnRole(_rebaseTokenPool);
+        vm.stopBroadcast();
+    }
+
+    function setAdmin(address _rebaseToken, address _rebaseTokenPool) public {
+        CCIPLocalSimulatorFork ccipLocalSimulatorFork = new CCIPLocalSimulatorFork();
+        Register.NetworkDetails memory networkDetails = ccipLocalSimulatorFork.getNetworkDetails(block.chainid);
+        vm.startBroadcast();
+        RegistryModuleOwnerCustom(networkDetails.registryModuleOwnerCustomAddress)
+            .registerAdminViaOwner(address(_rebaseToken));
+        TokenAdminRegistry(networkDetails.tokenAdminRegistryAddress).acceptAdminRole(address(_rebaseToken));
+        TokenAdminRegistry(networkDetails.tokenAdminRegistryAddress)
+            .setPool(address(_rebaseToken), address(_rebaseTokenPool));
+        vm.stopBroadcast();
     }
 }
 
