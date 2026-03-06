@@ -163,8 +163,8 @@ contract CrossChainTest is Test {
         vm.selectFork(remoteFork);
         uint256 remoteBalanceAfter = remoteToken.balanceOf(user);
         assertEq(remoteBalanceAfter, remoteBalance + amountToBridge);
-        uint256 remotesUserInterestRate = remoteToken.getUserInterestRate(user);
-        assertEq(localUserInterestRate, remotesUserInterestRate);
+        uint256 remoteUserInterestRate = remoteToken.getUserInterestRate(user);
+        assertEq(localUserInterestRate, remoteUserInterestRate);
     }
 
     function testBridgeAllToken() public {
