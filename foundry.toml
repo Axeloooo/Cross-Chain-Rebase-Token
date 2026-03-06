@@ -10,6 +10,6 @@ remappings = [
     "@ccip/contracts/=lib/chainlink-ccip/chains/evm/contracts/",
     "@chainlink-local/=lib/chainlink-local/",
 ]
-rpc_endpoints = { sepolia-eth = "https://eth-sepolia.g.alchemy.com/v2/P_WWyg26NojbbFRK5zf_p", arb-sepolia = "https://arb-sepolia.g.alchemy.com/v2/P_WWyg26NojbbFRK5zf_p" }
+rpc_endpoints = { sepolia-eth = "$SEPOLIA_ETH_RPC_URL", arb-sepolia = "$ARB_SEPOLIA_RPC_URL" }
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
