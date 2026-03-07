@@ -31,7 +31,7 @@ contract RebaseTokenPool is TokenPool {
     }
 
     /**
-     * @notice Mints the tokens on the destination chain
+     * @notice Mints the tokens on the source chain
      * @param releaseOrMintIn The input parameters for the release or mint operation, including the source pool data which contains the encoded user interest rate
      * @return releaseOrMintOut The output parameters for the release or mint operation, including the destination amount which is the same as the source denominated amount
      */
