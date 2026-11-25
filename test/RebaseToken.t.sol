@@ -148,6 +148,202 @@ contract RebaseTokenTest is Test {
         assertEq(vault.getRebaseTokenAddress(), address(rebaseToken));
     }
 
+    /*//////////////////////////////////////////////////////////////
+                    INTEREST RATE MERGE (SECURITY REVIEW)
+    //////////////////////////////////////////////////////////////*/
+
+    uint256 private constant HIGH_RATE = 5e10;
+    uint256 private constant LOW_RATE = 4e10;
+
+    function _deposit(address _user, uint256 _amount) internal {
+        vm.deal(_user, _amount);
+        vm.prank(_user);
+        vault.deposit{value: _amount}();
+    }
+
+    /// @dev Stands in for RebaseTokenPool.releaseOrMint, which calls mint(receiver, amount, sourceRate).
+    function _bridgeMint(address _receiver, uint256 _amount, uint256 _sourceRate) internal returns (address pool) {
+        pool = makeAddr("pool");
+        vm.prank(owner);
+        rebaseToken.grantMintAndBurnRole(pool);
+        vm.prank(pool);
+        rebaseToken.mint(_receiver, _amount, _sourceRate);
+    }
+
+    function _weightedRate(uint256 _balanceA, uint256 _rateA, uint256 _balanceB, uint256 _rateB)
+        internal
+        pure
+        returns (uint256)
+    {
+        return (_balanceA * _rateA + _balanceB * _rateB) / (_balanceA + _balanceB);
+    }
+
+    /// Finding 1: dust parked at an old high rate must not lift a large low-rate balance moved onto it.
+    function testTransferOntoDustHolderDoesNotUpgradeRate() public {
+        address attackerDust = makeAddr("attackerDust");
+        address attackerMain = makeAddr("attackerMain");
+        uint256 dust = 1e5;
+        uint256 amount = 100 ether;
+
+        _deposit(attackerDust, dust);
+        vm.prank(owner);
+        rebaseToken.setInterestRate(LOW_RATE);
+        _deposit(attackerMain, amount);
+        assertEq(rebaseToken.getUserInterestRate(attackerMain), LOW_RATE);
+
+        vm.prank(attackerMain);
+        rebaseToken.transfer(attackerDust, type(uint256).max);
+
+        assertEq(rebaseToken.getUserInterestRate(attackerDust), _weightedRate(dust, HIGH_RATE, amount, LOW_RATE));
+        assertLt(rebaseToken.getUserInterestRate(attackerDust), LOW_RATE + 1e5);
+
+        // The combined position earns no more than the two deposits would have earned separately.
+        vm.warp(block.timestamp + 365 days);
+        uint256 honestBalance =
+            (dust * (1e18 + HIGH_RATE * 365 days)) / 1e18 + (amount * (1e18 + LOW_RATE * 365 days)) / 1e18;
+        assertLe(rebaseToken.balanceOf(attackerDust), honestBalance);
+    }
+
+    /// Finding 1, transferFrom path.
+    function testTransferFromOntoDustHolderDoesNotUpgradeRate() public {
+        address attackerDust = makeAddr("attackerDust");
+        address attackerMain = makeAddr("attackerMain");
+        address spender = makeAddr("spender");
+        uint256 dust = 1e5;
+        uint256 amount = 100 ether;
+
+        _deposit(attackerDust, dust);
+        vm.prank(owner);
+        rebaseToken.setInterestRate(LOW_RATE);
+        _deposit(attackerMain, amount);
+
+        vm.prank(attackerMain);
+        rebaseToken.approve(spender, amount);
+        vm.prank(spender);
+        rebaseToken.transferFrom(attackerMain, attackerDust, amount);
+
+        assertEq(rebaseToken.getUserInterestRate(attackerDust), _weightedRate(dust, HIGH_RATE, amount, LOW_RATE));
+    }
+
+    /// A transfer into an empty account still hands over the sender's rate (unchanged behavior).
+    function testTransferToEmptyAccountInheritsSenderRate() public {
+        address recipient = makeAddr("recipient");
+        _deposit(user, 1 ether);
+        vm.prank(owner);
+        rebaseToken.setInterestRate(LOW_RATE);
+
+        vm.prank(user);
+        rebaseToken.transfer(recipient, 0.5 ether);
+
+        assertEq(rebaseToken.getUserInterestRate(recipient), HIGH_RATE);
+        assertEq(rebaseToken.getUserInterestRate(user), HIGH_RATE);
+    }
+
+    function testTransferToSelfKeepsRate() public {
+        _deposit(user, 1 ether);
+        vm.prank(user);
+        rebaseToken.transfer(user, 0.5 ether);
+        assertEq(rebaseToken.getUserInterestRate(user), HIGH_RATE);
+        assertEq(rebaseToken.balanceOf(user), 1 ether);
+    }
+
+    /// The merged rate always lies between the two input rates, and never rounds up.
+    function testFuzzTransferMergedRateIsBounded(uint256 recipientAmount, uint256 senderAmount) public {
+        recipientAmount = bound(recipientAmount, 1, type(uint96).max);
+        senderAmount = bound(senderAmount, 1, type(uint96).max);
+        address recipient = makeAddr("recipient");
+
+        _deposit(recipient, recipientAmount);
+        vm.prank(owner);
+        rebaseToken.setInterestRate(LOW_RATE);
+        _deposit(user, senderAmount);
+
+        vm.prank(user);
+        rebaseToken.transfer(recipient, senderAmount);
+
+        uint256 merged = rebaseToken.getUserInterestRate(recipient);
+        assertGe(merged, LOW_RATE);
+        assertLe(merged, HIGH_RATE);
+        assertEq(merged, _weightedRate(recipientAmount, HIGH_RATE, senderAmount, LOW_RATE));
+    }
+
+    /// Finding 2 (griefing): bridging 1 wei at a low rate must not wipe out a victim's rate.
+    function testBridgedDustCannotLowerReceiverRate() public {
+        address victim = makeAddr("victim");
+        _deposit(victim, 100 ether);
+
+        _bridgeMint(victim, 1, 0);
+
+        assertApproxEqAbs(rebaseToken.getUserInterestRate(victim), HIGH_RATE, 1);
+    }
+
+    /// Finding 2 (self-dealing): bridging 1 wei from a high-rate account must not lift a large low-rate balance.
+    function testBridgedDustCannotRaiseReceiverRate() public {
+        address attacker = makeAddr("attacker");
+        vm.prank(owner);
+        rebaseToken.setInterestRate(LOW_RATE);
+        _deposit(attacker, 100 ether);
+
+        _bridgeMint(attacker, 1, HIGH_RATE);
+
+        assertApproxEqAbs(rebaseToken.getUserInterestRate(attacker), LOW_RATE, 1);
+    }
+
+    /// Normal bridging: an empty receiver adopts the source chain rate, even above the local global rate.
+    function testBridgedMintToEmptyAccountAdoptsSourceRate() public {
+        address receiver = makeAddr("receiver");
+        vm.prank(owner);
+        rebaseToken.setInterestRate(LOW_RATE);
+
+        _bridgeMint(receiver, 1 ether, HIGH_RATE);
+
+        assertEq(rebaseToken.getUserInterestRate(receiver), HIGH_RATE);
+        assertEq(rebaseToken.balanceOf(receiver), 1 ether);
+    }
+
+    /// Normal bridging onto an existing balance blends the two rates by amount.
+    function testBridgedMintOntoExistingBalanceBlendsRates() public {
+        address receiver = makeAddr("receiver");
+        _deposit(receiver, 1 ether);
+        vm.prank(owner);
+        rebaseToken.setInterestRate(LOW_RATE);
+
+        _bridgeMint(receiver, 3 ether, LOW_RATE);
+
+        assertEq(rebaseToken.getUserInterestRate(receiver), _weightedRate(1 ether, HIGH_RATE, 3 ether, LOW_RATE));
+        assertEq(rebaseToken.balanceOf(receiver), 4 ether);
+    }
+
+    /// A receiver whose balance was fully burned starts fresh with the incoming rate.
+    function testMintAfterFullRedeemAdoptsIncomingRate() public {
+        _deposit(user, 1 ether);
+        vm.prank(user);
+        vault.redeem(type(uint256).max);
+        vm.prank(owner);
+        rebaseToken.setInterestRate(LOW_RATE);
+
+        _deposit(user, 1 ether);
+
+        assertEq(rebaseToken.getUserInterestRate(user), LOW_RATE);
+    }
+
+    /// Vault deposits into a new account still get exactly the current global rate.
+    function testDepositSetsCurrentGlobalRate() public {
+        vm.prank(owner);
+        rebaseToken.setInterestRate(LOW_RATE);
+        _deposit(user, 1 ether);
+        assertEq(rebaseToken.getUserInterestRate(user), LOW_RATE);
+    }
+
+    /// A top-up deposit earns the current global rate on the new tokens; existing tokens keep their rate.
+    function testDepositTopUpBlendsWithCurrentGlobalRate() public {
+        _deposit(user, 1 ether);
+        vm.prank(owner);
+        rebaseToken.setInterestRate(LOW_RATE);
+        _deposit(user, 1 ether);
+        assertEq(rebaseToken.getUserInterestRate(user), _weightedRate(1 ether, HIGH_RATE, 1 ether, LOW_RATE));
+    }
+
     function testInterestRateCanOnlyDecrease(uint256 newInterestRate) public {
         uint256 initialInterestRate = rebaseToken.getInterestRate();
         newInterestRate = bound(newInterestRate, initialInterestRate, type(uint256).max);

@@ -37,6 +37,7 @@ The design centers on three ideas:
 1. A user deposits ETH into `Vault`.
 2. The vault mints `RebaseToken` to the depositor using the protocol's current global interest rate.
 3. Each account keeps its own interest rate snapshot from the moment it enters the system.
+   When tokens arrive at an account that already holds a balance (transfer, deposit top-up, or bridge), its rate becomes the balance-weighted average of its current rate and the incoming tokens' rate, rounded down. An empty account simply adopts the incoming rate.
 4. The token balance grows linearly over time and accrued interest is minted when the user interacts with the token.
 5. When tokens are bridged with CCIP, the pool encodes the user's interest rate in the cross-chain payload and restores it on the destination chain.
 

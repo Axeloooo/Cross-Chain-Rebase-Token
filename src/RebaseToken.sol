@@ -51,14 +51,16 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     }
 
     /**
-     * @notice Mint the user tokens when they deposit into the vault
+     * @notice Mint the user tokens when they deposit into the vault or bridge in from another chain
+     * @dev If `_to` holds no tokens it adopts `_interestRate`. Otherwise the incoming rate is blended into
+     * its current rate, weighted by balance, so a small mint cannot overwrite the rate of a large balance.
      * @param _to The address to mint tokens to
      * @param _amount The amount of tokens to mint
-     * @param _interestRate The interest rate to use for the user
+     * @param _interestRate The interest rate attached to the minted tokens
      */
     function mint(address _to, uint256 _amount, uint256 _interestRate) external onlyRole(MINT_AND_BURN_ROLE) {
         _mintAccruedInterest(_to);
-        s_userInterestRates[_to] = _interestRate;
+        _mergeInterestRate(_to, _amount, _interestRate);
         _mint(_to, _amount);
     }
 
@@ -96,9 +98,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         if (_amount == type(uint256).max) {
             _amount = balanceOf(msg.sender);
         }
-        if (balanceOf(_recipient) == 0) {
-            s_userInterestRates[_recipient] = s_userInterestRates[msg.sender];
-        }
+        _mergeInterestRate(_recipient, _amount, s_userInterestRates[msg.sender]);
         return super.transfer(_recipient, _amount);
     }
 
@@ -115,10 +115,32 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         if (_amount == type(uint256).max) {
             _amount = balanceOf(_sender);
         }
-        if (balanceOf(_recipient) == 0) {
-            s_userInterestRates[_recipient] = s_userInterestRates[_sender];
-        }
+        _mergeInterestRate(_recipient, _amount, s_userInterestRates[_sender]);
         return super.transferFrom(_sender, _recipient, _amount);
+    }
+
+    /**
+     * @notice Blend an incoming interest rate into a user's rate before `_amount` tokens are added to their balance
+     * @dev Must be called after `_mintAccruedInterest(_user)` so the principal is the full balance.
+     * An empty account adopts `_incomingRate`. Otherwise the new rate is the balance-weighted average of the
+     * current and incoming rates, rounded down, so the total interest earned per second is never increased by
+     * moving tokens between accounts.
+     * @param _user The account receiving tokens
+     * @param _amount The amount of tokens about to be added
+     * @param _incomingRate The interest rate attached to the incoming tokens
+     */
+    function _mergeInterestRate(address _user, uint256 _amount, uint256 _incomingRate) internal {
+        uint256 currentBalance = super.balanceOf(_user);
+        if (currentBalance == 0) {
+            s_userInterestRates[_user] = _incomingRate;
+            return;
+        }
+        if (_amount == 0) {
+            return;
+        }
+        uint256 currentRate = s_userInterestRates[_user];
+        s_userInterestRates[_user] =
+            (currentBalance * currentRate + _amount * _incomingRate) / (currentBalance + _amount);
     }
 
     /**
